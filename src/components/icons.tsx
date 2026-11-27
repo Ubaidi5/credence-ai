@@ -104,6 +104,33 @@ export const IconLink = (p: P) => (
 export const IconEdit = (p: P) => (
   <svg {...base(p)}><path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" /></svg>
 );
+export const IconInfo = (p: P) => (
+  <svg {...base(p)}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
+);
+export const IconHelp = (p: P) => (
+  <svg {...base(p)}><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5M12 16.8h.01" /></svg>
+);
+export const IconBolt = (p: P) => (
+  <svg {...base(p)}><path d="M13 3 5 14h6l-1 7 8-11h-6l1-7Z" /></svg>
+);
+export const IconCode = (p: P) => (
+  <svg {...base(p)}><path d="m8 7-5 5 5 5M16 7l5 5-5 5" /></svg>
+);
+export const IconBulb = (p: P) => (
+  <svg {...base(p)}><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V15h7v-1.1A6 6 0 0 0 12 3Z" /></svg>
+);
+export const IconUnlock = (p: P) => (
+  <svg {...base(p)}><rect x="5" y="11" width="14" height="9" rx="1.5" /><path d="M8 11V7.5a4 4 0 0 1 7.7-1.5" /></svg>
+);
+export const IconLock = (p: P) => (
+  <svg {...base(p)}><rect x="5" y="11" width="14" height="9" rx="1.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+);
+export const IconStar = (p: P) => (
+  <svg {...base(p)}><path d="m12 4 2.4 5 5.5.7-4 3.8 1 5.5-4.9-2.7L7.1 19l1-5.5-4-3.8 5.5-.7L12 4Z" /></svg>
+);
+export const IconUpDown = (p: P) => (
+  <svg {...base(p)}><path d="m8 9 4-4 4 4M8 15l4 4 4-4" /></svg>
+);
 export const IconSpinner = (p: P) => (
   <svg {...base(p)} className={`animate-spin ${p.className ?? ""}`}><path d="M12 3a9 9 0 1 0 9 9" /></svg>
 );

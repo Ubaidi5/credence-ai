@@ -1,11 +1,21 @@
+import type { ReactNode } from "react";
 import type { FitLabel } from "../lib/types";
-import { IconBan, IconCheck, IconClock } from "./icons";
+import { IconHelp } from "./icons";
+import { Tooltip } from "./Tooltip";
 
 export const FIT_TEXT: Record<FitLabel, string> = {
   recommended: "Recommended",
   slow: "Will run slowly",
   "wont-run": "Won't run",
 };
+
+export const FIT_DOT: Record<FitLabel, string> = {
+  recommended: "bg-emerald-500 dark:bg-emerald-400",
+  slow: "bg-amber-500 dark:bg-amber-400",
+  "wont-run": "bg-rose-500 dark:bg-rose-400",
+};
+
+const SHORT_TEXT: Record<FitLabel, string> = { ...FIT_TEXT, slow: "Slow" };
 
 const STYLE: Record<FitLabel, string> = {
   recommended:
@@ -14,16 +24,17 @@ const STYLE: Record<FitLabel, string> = {
   "wont-run": "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-400/25",
 };
 
-const ICON = { recommended: IconCheck, slow: IconClock, "wont-run": IconBan } as const;
-
-export function FitBadge({ label }: { label: FitLabel }) {
-  const Icon = ICON[label];
+/** Fit label with a status dot. Hover, focus or tap it to see why. */
+export function FitBadge({ label, why }: { label: FitLabel; why: ReactNode }) {
   return (
-    <span
-      className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-xs font-medium whitespace-nowrap ring-1 ring-inset ${STYLE[label]}`}
+    <Tooltip
+      tip={why}
+      className={`inline-flex h-7 shrink-0 cursor-help items-center gap-1.5 rounded-full pr-1.5 pl-2.5 text-xs font-semibold whitespace-nowrap ring-1 ring-inset ${STYLE[label]}`}
     >
-      <Icon width={14} height={14} strokeWidth={2.25} />
-      {FIT_TEXT[label]}
-    </span>
+      <span aria-hidden className={`size-1.5 rounded-full ${FIT_DOT[label]}`} />
+      {SHORT_TEXT[label]}
+      <IconHelp width={16} height={16} />
+      <span className="sr-only">, why?</span>
+    </Tooltip>
   );
 }
