@@ -29,7 +29,7 @@ export function FitBadge({ label, why }: { label: FitLabel; why: ReactNode }) {
   return (
     <Tooltip
       tip={why}
-      className={`inline-flex h-7 shrink-0 cursor-help items-center gap-1.5 rounded-full pr-1.5 pl-2.5 text-xs font-semibold whitespace-nowrap ring-1 ring-inset ${STYLE[label]}`}
+      className={`relative inline-flex h-7 shrink-0 cursor-help items-center gap-1.5 rounded-full pr-1.5 pl-2.5 text-xs font-semibold whitespace-nowrap ring-1 ring-inset ${STYLE[label]}`}
     >
       <span aria-hidden className={`size-1.5 rounded-full ${FIT_DOT[label]}`} />
       {SHORT_TEXT[label]}
