@@ -7,12 +7,13 @@ export interface ColibriInfo {
   installed: boolean;
   dir: string | null;
   version: string | null;
-  /** Python 3.10+ version, or null when it is missing (Colibri's launcher needs it). */
+  /** Python 3.10+ version, or null when it is missing (Colibri's launcher needs it).
+   * On Windows Credence downloads a small private Python when the PC has none. */
   python: string | null;
   pythonHint: string;
 }
 
-export type SetupPhase = "idle" | "checking" | "downloading" | "verifying" | "extracting" | "done" | "error";
+export type SetupPhase = "idle" | "checking" | "downloading" | "verifying" | "extracting" | "python" | "done" | "error";
 
 export interface ColibriSetup {
   info: ColibriInfo | null;
@@ -63,13 +64,13 @@ export async function refreshColibri(): Promise<ColibriInfo> {
   return info;
 }
 
-/** Installs the engine if it is missing. Safe to call many times: one install runs at a time. */
+/** Installs the engine (and on Windows, Python) if missing. Safe to call many times: one install runs at a time. */
 export function ensureColibri(): Promise<ColibriInfo> {
   if (inflight) return inflight;
   inflight = (async () => {
     await listenOnce();
     const info = await refreshColibri();
-    if (info.installed || !isTauri()) return info;
+    if ((info.installed && info.python) || !isTauri()) return info;
     set({ phase: "checking", error: null, done: 0, total: 0 });
     try {
       const installed = await invoke<ColibriInfo>("colibri_install");
@@ -108,6 +109,10 @@ export function setupLabel(s: ColibriSetup): string | null {
     case "verifying":
     case "extracting":
       return "Installing the Colibri engine…";
+    case "python":
+      return s.total > 0
+        ? `Setting up Python for the engine (one time)… ${Math.floor((s.done / s.total) * 100)}%`
+        : "Setting up Python for the engine (one time)…";
     default:
       return null;
   }

@@ -43,6 +43,8 @@ export interface ModelVariant {
   ramGoodGB?: number;
   /** File (or folder) inside the Hugging Face repo. */
   file: string;
+  /** Size worked out from the parameter count (search results), not read from HF. */
+  estimated?: boolean;
 }
 
 export interface CatalogModel {
@@ -60,6 +62,10 @@ export interface CatalogModel {
   qualityRank: number;
   tags: string[];
   variants: ModelVariant[];
+  /** "hf" for a model found by searching Hugging Face, absent for the curated list. */
+  source?: "hf";
+  downloads?: number;
+  likes?: number;
 }
 
 export type FitLabel = "recommended" | "slow" | "wont-run";

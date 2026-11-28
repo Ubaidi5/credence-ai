@@ -2,6 +2,7 @@ mod colibri_setup;
 mod downloads;
 mod engine;
 mod hardware;
+mod python_runtime;
 mod workspace;
 
 use downloads::{DownloadSpec, InstalledModel, Job, Manager};
@@ -108,8 +109,8 @@ async fn engine_start(
 ) -> Result<engine::EngineStatus, String> {
     let engine = engine.inner().clone();
     // No folder chosen: use the engine Credence installed itself.
+    let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let dir = if colibri_dir.trim().is_empty() {
-        let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
         colibri_setup::installed_dir(&data, engine_overlay(&app).as_deref())
             .map(|(d, _)| d)
             .ok_or("The Colibri engine is not installed yet.")?
@@ -117,12 +118,14 @@ async fn engine_start(
         engine::expand_home(colibri_dir.trim())
     };
     tauri::async_runtime::spawn_blocking(move || {
+        let python = python_runtime::find(&data);
         engine.start(
             &dir,
             &PathBuf::from(model_dir),
             &extra_args.unwrap_or_default(),
             &env.unwrap_or_default(),
             note.as_deref(),
+            python.as_ref(),
         )
     })
     .await

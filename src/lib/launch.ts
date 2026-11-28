@@ -37,8 +37,19 @@ function anyGpu(hw: HardwareProfile) {
   return hw.unifiedMemory ? undefined : hw.gpus.find((g) => g.vendor !== "apple");
 }
 
-export function launchPlan(modelId: string, hw: HardwareProfile | null, settings: Pick<Settings, "gpu">): LaunchPlan {
-  const model = catalogModelFor(modelId);
+/** What the download manifest remembers of a model found by search. */
+export interface ModelMeta {
+  architecture?: string;
+  kind?: "dense" | "moe";
+}
+
+export function launchPlan(
+  modelId: string,
+  hw: HardwareProfile | null,
+  settings: Pick<Settings, "gpu">,
+  meta?: ModelMeta,
+): LaunchPlan {
+  const model: ModelMeta | undefined = catalogModelFor(modelId) ?? meta;
   const arch = model?.architecture ?? "";
   const args: string[] = [];
   const env: [string, string][] = [];
