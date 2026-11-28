@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
-import { FitBadge } from "../components/FitBadge";
+import { FIT_DOT } from "../components/FitBadge";
 import { HardwareCard } from "../components/HardwareCard";
 import { ModelCard } from "../components/ModelCard";
-import { IconSearch } from "../components/icons";
+import { IconSearch, IconWarn } from "../components/icons";
 import { CATALOG } from "../lib/catalog";
 import type { Downloads } from "../lib/downloads";
-import { rankModels, recommendedModels } from "../lib/fit";
+import { memoryBudget, rankModels, recommendedModels } from "../lib/fit";
+import { gb } from "../lib/format";
+import { lowMemory } from "../lib/modelView";
 import type { FitLabel, HardwareProfile } from "../lib/types";
 
 type Filter = "all" | FitLabel;
@@ -16,6 +18,17 @@ const FILTERS: { id: Filter; text: string }[] = [
   { id: "slow", text: "Will run slowly" },
   { id: "wont-run", text: "Won't run" },
 ];
+
+/** As many columns as fit, never narrower than a card needs. */
+const GRID = "grid grid-cols-[repeat(auto-fill,minmax(min(100%,18.5rem),1fr))] gap-4";
+
+function Count({ n }: { n: number }) {
+  return (
+    <span className="min-w-6 rounded-full bg-zinc-200/70 px-1.5 text-center text-xs leading-6 font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+      {n}
+    </span>
+  );
+}
 
 interface Props {
   hw: HardwareProfile | null;
@@ -28,12 +41,13 @@ interface Props {
 }
 
 export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowDownloads, onShowInstalled }: Props) {
-  const cardProps = { downloads, onShowDownloads, onShowInstalled };
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
   const ranked = useMemo(() => (hw ? rankModels(hw, CATALOG) : []), [hw]);
   const top = useMemo(() => recommendedModels(ranked, 3), [ranked]);
+  const freeGB = hw ? memoryBudget(hw).availableNowGB : 0;
+  const cardProps = { freeGB, downloads, onShowDownloads, onShowInstalled };
 
   const q = query.trim().toLowerCase();
   const matches = ranked.filter(
@@ -50,20 +64,30 @@ export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowD
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
       <HardwareCard hw={hw} scanning={scanning} error={error} onRescan={onRescan} />
 
+      {hw && lowMemory(top, freeGB) && (
+        <p
+          role="status"
+          className="-my-2 flex items-start gap-2.5 rounded-xl border border-amber-600/25 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/25 dark:bg-amber-500/10 dark:text-amber-200"
+        >
+          <IconWarn width={18} height={18} className="mt-px shrink-0" />
+          Only {gb(freeGB)} of memory is free right now. Close some apps before you start a model.
+        </p>
+      )}
+
       {hw && top.length > 0 && !q && (
         <section aria-labelledby="rec-title" className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id="rec-title" className="text-lg font-semibold tracking-tight">
               Recommended for your computer
             </h2>
-            <FitBadge label="recommended" />
+            <Count n={top.length} />
           </div>
           <p className="-mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             The smartest models that will run well on your hardware.
           </p>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+          <div className={GRID}>
             {top.map((r) => (
-              <ModelCard key={r.model.id} item={r} {...cardProps} />
+              <ModelCard key={r.model.id} item={r} hw={hw} {...cardProps} />
             ))}
           </div>
         </section>
@@ -72,9 +96,12 @@ export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowD
       {hw && (
         <section aria-labelledby="all-title" className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 id="all-title" className="text-lg font-semibold tracking-tight">
-              All models
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 id="all-title" className="text-lg font-semibold tracking-tight">
+                All models
+              </h2>
+              <Count n={matches.length} />
+            </div>
             <label className="relative w-full sm:w-72">
               <span className="sr-only">Search models</span>
               <IconSearch
@@ -108,6 +135,10 @@ export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowD
                       : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
                   }`}
                 >
+                  <span
+                    aria-hidden
+                    className={`size-2 rounded-full ${f.id === "all" ? "bg-zinc-400" : FIT_DOT[f.id]}`}
+                  />
                   {f.text}
                   <span className={on ? "opacity-70" : "text-zinc-400"}>{count(f.id)}</span>
                 </button>
@@ -116,9 +147,9 @@ export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowD
           </div>
 
           {shown.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            <div className={GRID}>
               {shown.map((r) => (
-                <ModelCard key={r.model.id} item={r} {...cardProps} />
+                <ModelCard key={r.model.id} item={r} hw={hw} {...cardProps} />
               ))}
             </div>
           ) : (

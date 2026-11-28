@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { IconBox, IconBrain, IconChat, IconClose, IconDownload, IconMenu, IconModels, IconSettings } from "./icons";
 import { BrandTile } from "./BrandMark";
+import { Tooltip } from "./Tooltip";
 
 export type ScreenId = "chat" | "models" | "my-models" | "downloads" | "memory" | "settings";
 
@@ -65,20 +66,25 @@ export type EngineDisplay = { state: "off" | "starting" | "ready" | "error"; lab
 
 const PILL_DOT = { off: "bg-zinc-400", starting: "bg-amber-500 animate-pulse", ready: "bg-emerald-500", error: "bg-rose-500" };
 const PILL_TEXT = { off: "no model", starting: "loading…", ready: "ready", error: "error" };
+const PILL_HELP = {
+  off: "No model is running. Open Chat to start one.",
+  starting: "The model is loading.",
+  ready: "Ready to chat.",
+  error: "The model could not run. Open Chat for details.",
+};
 
 function EnginePill({ engine, onClick }: { engine: EngineDisplay; onClick?: () => void }) {
   return (
-    <button
-      type="button"
+    <Tooltip
       onClick={onClick}
-      title={engine.label || undefined}
+      tip={engine.label ? `${PILL_HELP[engine.state]} (${engine.label})` : PILL_HELP[engine.state]}
       className="inline-flex h-7 max-w-56 items-center gap-1.5 rounded-full border border-zinc-200 px-2.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
     >
       <span className={`size-1.5 shrink-0 rounded-full ${PILL_DOT[engine.state]}`} />
       <span className="truncate">
         {engine.state === "ready" && engine.label ? engine.label : <><span className="hidden sm:inline">Engine: </span>{PILL_TEXT[engine.state]}</>}
       </span>
-    </button>
+    </Tooltip>
   );
 }
 
