@@ -71,7 +71,7 @@ export function useEngine(settings: Settings, hw: HardwareProfile | null) {
         });
         return;
       }
-      const plan = launchPlan(model.modelId, hw, settings);
+      const plan = launchPlan(model.modelId, hw, settings, model);
       const run = async (p: LaunchPlan) => {
         const startArgs = { modelDir: model.path, extraArgs: p.args, env: p.env, note: p.gpuNote };
         const builtIn = async () => {

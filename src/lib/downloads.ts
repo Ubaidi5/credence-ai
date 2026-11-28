@@ -9,6 +9,9 @@ export interface DownloadSpec {
   quant: string;
   repo: string;
   file: string;
+  /** Set for models found by search, so the engine flags fit the model later. */
+  architecture?: string;
+  kind?: "dense" | "moe";
 }
 
 export type JobStatus = "queued" | "downloading" | "paused" | "verifying" | "done" | "error";
@@ -34,6 +37,8 @@ export interface InstalledModel {
   sizeBytes: number;
   path: string;
   installedAtMs: number;
+  architecture?: string;
+  kind?: "dense" | "moe";
 }
 
 /** Same rule as `job_id` in Rust. */
@@ -43,7 +48,8 @@ export function jobId(modelId: string, quant: string): string {
 }
 
 export function specFor(model: CatalogModel, v: ModelVariant): DownloadSpec {
-  return { modelId: model.id, name: model.name, quant: v.quant, repo: model.hfRepo, file: v.file };
+  const spec: DownloadSpec = { modelId: model.id, name: model.name, quant: v.quant, repo: model.hfRepo, file: v.file };
+  return model.source === "hf" ? { ...spec, architecture: model.architecture, kind: model.kind } : spec;
 }
 
 export const isActive = (s: JobStatus) => s === "queued" || s === "downloading" || s === "verifying";

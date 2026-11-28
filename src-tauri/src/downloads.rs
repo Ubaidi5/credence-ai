@@ -40,7 +40,15 @@ pub struct DownloadSpec {
     pub quant: String,
     pub repo: String,
     /// A file path or a folder inside the repo. Empty = the whole repo.
+    /// The first part of a split GGUF (`-00001-of-00003.gguf`) brings all its parts.
     pub file: String,
+    /// GGUF `general.architecture`, for models found by search (the curated ones are
+    /// known to the UI by id). Kept in the manifest so the right engine flags are used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<String>,
+    /// "dense" or "moe", same reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,6 +87,10 @@ pub struct InstalledModel {
     pub size_bytes: u64,
     pub path: String,
     pub installed_at_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -133,9 +145,16 @@ pub async fn list_files(client: &reqwest::Client, repo: &str, file: &str) -> Res
     }
     let entries: Vec<TreeEntry> = res.json().await.map_err(|e| format!("Unexpected reply from Hugging Face: {e}"))?;
     let prefix = format!("{}/", file.trim_end_matches('/'));
+    let split = split_stem(file);
     let files: Vec<RemoteFile> = entries
         .into_iter()
-        .filter(|e| e.kind == "file" && (file.is_empty() || e.path == file || e.path.starts_with(&prefix)))
+        .filter(|e| {
+            e.kind == "file"
+                && (file.is_empty()
+                    || e.path == file
+                    || e.path.starts_with(&prefix)
+                    || split.is_some_and(|stem| split_stem(&e.path) == Some(stem)))
+        })
         .map(|e| RemoteFile {
             size: e.lfs.as_ref().map(|l| l.size).unwrap_or(e.size),
             sha256: e.lfs.map(|l| l.oid),
@@ -146,6 +165,16 @@ pub async fn list_files(client: &reqwest::Client, repo: &str, file: &str) -> Res
         return Err(format!("{} was not found in {repo}.", if file.is_empty() { "No files" } else { file }));
     }
     Ok(files)
+}
+
+/// `dir/Model-Q4_K_M-00001-of-00003.gguf` -> `dir/Model-Q4_K_M` (and the part count),
+/// the name all parts of a split GGUF share. None for other files.
+fn split_stem(path: &str) -> Option<(&str, &str)> {
+    let rest = path.strip_suffix(".gguf")?;
+    let (head, count) = rest.rsplit_once("-of-")?;
+    let (stem, part) = head.rsplit_once('-')?;
+    let digits = |s: &str| s.len() == 5 && s.bytes().all(|b| b.is_ascii_digit());
+    (digits(part) && digits(count)).then_some((stem, count))
 }
 
 #[derive(Debug)]
@@ -508,6 +537,8 @@ impl Manager {
             size_bytes: total,
             path: dir.to_string_lossy().into_owned(),
             installed_at_ms: now_ms(),
+            architecture: spec.architecture.clone(),
+            kind: spec.kind.clone(),
         };
         let manifest = serde_json::to_string_pretty(&installed).unwrap_or_default();
         if let Err(e) = tokio::fs::write(dir.join(MANIFEST), manifest).await {
@@ -554,5 +585,27 @@ impl Manager {
         tokio::fs::remove_dir_all(&dir).await.map_err(|e| e.to_string())?;
         self.jobs.lock().unwrap().remove(id);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_gguf_parts_share_a_stem() {
+        let a = split_stem("Q4_K_M/Big-Q4_K_M-00001-of-00003.gguf");
+        assert_eq!(a, Some(("Q4_K_M/Big-Q4_K_M", "00003")));
+        assert_eq!(split_stem("Q4_K_M/Big-Q4_K_M-00003-of-00003.gguf"), a);
+        assert_eq!(split_stem("Big-Q4_K_M.gguf"), None);
+        assert_eq!(split_stem("Big-Q4_K_M-1-of-3.gguf"), None);
+        assert_ne!(split_stem("Big-Q8_0-00001-of-00003.gguf"), a);
+    }
+
+    #[test]
+    fn old_specs_without_architecture_still_load() {
+        let s: DownloadSpec =
+            serde_json::from_str(r#"{"modelId":"qwen3-4b","name":"Qwen3 4B","quant":"Q4_K_M","repo":"r","file":"f.gguf"}"#).unwrap();
+        assert!(s.architecture.is_none() && s.kind.is_none());
     }
 }

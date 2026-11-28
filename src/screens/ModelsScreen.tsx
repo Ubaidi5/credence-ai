@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { FIT_DOT } from "../components/FitBadge";
+import { ExploreModels } from "../components/ExploreModels";
+import { FitFilters, type Filter } from "../components/FitFilters";
 import { HardwareCard } from "../components/HardwareCard";
 import { ModelCard } from "../components/ModelCard";
 import { IconSearch, IconWarn } from "../components/icons";
@@ -8,16 +9,9 @@ import type { Downloads } from "../lib/downloads";
 import { memoryBudget, rankModels, recommendedModels } from "../lib/fit";
 import { gb } from "../lib/format";
 import { lowMemory } from "../lib/modelView";
-import type { FitLabel, HardwareProfile } from "../lib/types";
+import type { HardwareProfile } from "../lib/types";
 
-type Filter = "all" | FitLabel;
-
-const FILTERS: { id: Filter; text: string }[] = [
-  { id: "all", text: "All" },
-  { id: "recommended", text: "Recommended" },
-  { id: "slow", text: "Will run slowly" },
-  { id: "wont-run", text: "Won't run" },
-];
+type Tab = "featured" | "explore";
 
 /** As many columns as fit, never narrower than a card needs. */
 const GRID = "grid grid-cols-[repeat(auto-fill,minmax(min(100%,18.5rem),1fr))] gap-4";
@@ -43,6 +37,13 @@ interface Props {
 export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowDownloads, onShowInstalled }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [tab, setTab] = useState<Tab>("featured");
+  // Explore stays mounted once opened, so its results survive a switch back to Featured.
+  const [exploreOpened, setExploreOpened] = useState(false);
+  const openTab = (t: Tab) => {
+    setTab(t);
+    if (t === "explore") setExploreOpened(true);
+  };
 
   const ranked = useMemo(() => (hw ? rankModels(hw, CATALOG) : []), [hw]);
   const top = useMemo(() => recommendedModels(ranked, 3), [ranked]);
@@ -74,7 +75,47 @@ export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowD
         </p>
       )}
 
-      {hw && top.length > 0 && !q && (
+      {hw && (
+        <div
+          role="tablist"
+          aria-label="Model lists"
+          className="grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1 sm:inline-grid sm:w-fit sm:self-start dark:bg-zinc-800/70"
+        >
+          {(
+            [
+              { id: "featured", text: "Featured", sub: `${CATALOG.length} picked by us` },
+              { id: "explore", text: "Explore all", sub: "Hugging Face" },
+            ] as const
+          ).map((t) => {
+            const on = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => openTab(t.id)}
+                className={`flex min-w-0 flex-col items-center rounded-lg px-4 py-1.5 transition-colors sm:min-w-44 ${
+                  on
+                    ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-100"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                }`}
+              >
+                <span className="text-sm font-semibold">{t.text}</span>
+                <span className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">{t.sub}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {hw && exploreOpened && (
+        <div hidden={tab !== "explore"} className="-mt-3">
+          <ExploreModels hw={hw} freeGB={freeGB} grid={GRID} {...{ downloads, onShowDownloads, onShowInstalled }} />
+        </div>
+      )}
+
+      {hw && tab === "featured" && top.length > 0 && !q && (
         <section aria-labelledby="rec-title" className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id="rec-title" className="text-lg font-semibold tracking-tight">
@@ -93,12 +134,12 @@ export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowD
         </section>
       )}
 
-      {hw && (
+      {hw && tab === "featured" && (
         <section aria-labelledby="all-title" className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <h2 id="all-title" className="text-lg font-semibold tracking-tight">
-                All models
+                Featured models
               </h2>
               <Count n={matches.length} />
             </div>
@@ -119,32 +160,7 @@ export function ModelsScreen({ hw, scanning, error, onRescan, downloads, onShowD
             </label>
           </div>
 
-          <div role="tablist" aria-label="Filter by fit" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-            {FILTERS.map((f) => {
-              const on = filter === f.id;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  onClick={() => setFilter(f.id)}
-                  className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors ${
-                    on
-                      ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                  }`}
-                >
-                  <span
-                    aria-hidden
-                    className={`size-2 rounded-full ${f.id === "all" ? "bg-zinc-400" : FIT_DOT[f.id]}`}
-                  />
-                  {f.text}
-                  <span className={on ? "opacity-70" : "text-zinc-400"}>{count(f.id)}</span>
-                </button>
-              );
-            })}
-          </div>
+          <FitFilters value={filter} onChange={setFilter} count={count} />
 
           {shown.length > 0 ? (
             <div className={GRID}>

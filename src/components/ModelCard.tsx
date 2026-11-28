@@ -79,6 +79,8 @@ export function ModelCard({ item, hw, freeGB, downloads, onShowDownloads, onShow
     void downloads.start(specFor(model, variant), variant.sizeGB);
   };
 
+  // Search results only know the parameter count, so their sizes are worked out.
+  const size = `${variant.estimated ? "~" : ""}${gb(variant.sizeGB)}`;
   const dots = speedDots(fit);
   const memory = memoryState(fit, freeGB);
 
@@ -100,7 +102,9 @@ export function ModelCard({ item, hw, freeGB, downloads, onShowDownloads, onShow
               <IconInfo width={15} height={15} />
             </Tooltip>
           </div>
-          <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{model.publisher}</p>
+          <p className="truncate text-xs text-zinc-500 dark:text-zinc-400" title={model.hfRepo}>
+            {model.publisher}
+          </p>
         </div>
         <FitBadge
           label={fit.label}
@@ -164,8 +168,12 @@ export function ModelCard({ item, hw, freeGB, downloads, onShowDownloads, onShow
         </Stat>
         <Stat
           icon={<IconDownload width={15} height={15} />}
-          value={gb(variant.sizeGB)}
-          tip={`Download size: ${gb(variant.sizeGB)}.`}
+          value={size}
+          tip={
+            variant.estimated
+              ? `Download size: about ${gb(variant.sizeGB)}. The exact size shows when the download starts.`
+              : `Download size: ${gb(variant.sizeGB)}.`
+          }
         >
           <span className="text-[11px] leading-3 text-zinc-500 dark:text-zinc-400">download</span>
         </Stat>
@@ -179,7 +187,7 @@ export function ModelCard({ item, hw, freeGB, downloads, onShowDownloads, onShow
           noSpace={fit.diskOk === false}
           label={fit.label}
           hint={downloadHint(fit, hw)}
-          size={gb(variant.sizeGB)}
+          size={size}
           onDownload={() => (fit.label === "wont-run" ? setConfirmAnyway(true) : startDownload())}
           onShowDownloads={onShowDownloads}
           onShowInstalled={onShowInstalled}
@@ -196,7 +204,7 @@ export function ModelCard({ item, hw, freeGB, downloads, onShowDownloads, onShow
           startDownload();
         }}
       >
-        {fit.reason} It is a {gb(variant.sizeGB)} download. Do you still want to download it?
+        {fit.reason} It is a {size} download. Do you still want to download it?
       </ConfirmDialog>
     </article>
   );
