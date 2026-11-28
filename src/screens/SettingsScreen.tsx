@@ -89,7 +89,7 @@ function BuiltInEngine() {
                 : "Credence downloads it by itself (one time) when you start a model."}
         </p>
       </div>
-      {info && info.supported && !info.installed && !busy && (
+      {info && info.supported && (!info.installed || !info.python) && !busy && (
         <button
           type="button"
           onClick={() => void ensureColibri().catch(() => {})}

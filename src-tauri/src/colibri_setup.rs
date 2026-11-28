@@ -100,7 +100,9 @@ pub fn installed_dir(app_data: &Path, overlay: Option<&Path>) -> Option<(PathBuf
 }
 
 fn python_hint() -> String {
-    if cfg!(windows) {
+    if crate::python_runtime::can_bundle() {
+        "Credence downloads it for you (one time, about 11 MB) when you start a model.".into()
+    } else if cfg!(windows) {
         "Install Python 3 from python.org (tick \"Add python.exe to PATH\") or run: winget install Python.Python.3.12".into()
     } else if cfg!(target_os = "macos") {
         "Install Python 3 with: brew install python".into()
@@ -129,27 +131,6 @@ fn no_window(c: &mut Command) -> &mut Command {
     c
 }
 
-/// Python 3.10+ version string, if one is on PATH.
-pub fn python_version() -> Option<String> {
-    let candidates: &[&[&str]] = if cfg!(windows) { &[&["py", "-3"], &["python"], &["python3"]] } else { &[&["python3"], &["python"]] };
-    for c in candidates {
-        let mut cmd = Command::new(c[0]);
-        cmd.args(&c[1..]).args(["-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"]);
-        let Ok(out) = no_window(&mut cmd).output() else { continue };
-        if !out.status.success() {
-            continue;
-        }
-        let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        let mut parts = v.split('.').filter_map(|p| p.parse::<u32>().ok());
-        if let (Some(major), Some(minor)) = (parts.next(), parts.next()) {
-            if major == 3 && minor >= 10 {
-                return Some(v);
-            }
-        }
-    }
-    None
-}
-
 pub fn info(app_data: &Path, overlay: Option<&Path>) -> ColibriInfo {
     let installed = installed_dir(app_data, overlay);
     ColibriInfo {
@@ -157,7 +138,7 @@ pub fn info(app_data: &Path, overlay: Option<&Path>) -> ColibriInfo {
         installed: installed.is_some(),
         dir: installed.as_ref().map(|(d, _)| d.to_string_lossy().into_owned()),
         version: installed.map(|(_, t)| t),
-        python: python_version(),
+        python: crate::python_runtime::find(app_data).map(|p| p.version().to_string()),
         python_hint: python_hint(),
     }
 }
@@ -201,7 +182,7 @@ fn parse_sums(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn extract(archive: &Path, dest: &Path) -> Result<(), String> {
+pub(crate) fn extract(archive: &Path, dest: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     // tar handles .tar.gz everywhere and .zip on Windows 10+ (bsdtar ships with it).
     let tar = if cfg!(windows) {
@@ -237,29 +218,53 @@ fn mark_executable(dir: &Path) {
     }
 }
 
-/// Downloads and unpacks the latest Colibri release. Reports progress through `emit`.
+fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(concat!("CredenceAI/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+/// Installs everything the built-in engine needs: the Colibri release and, on a
+/// Windows PC without Python, the small embeddable Python that runs `coli`.
 pub async fn install(
     app_data: &Path,
     overlay: Option<&Path>,
     emit: &(dyn Fn(Progress) + Send + Sync),
 ) -> Result<ColibriInfo, String> {
+    install_engine(app_data, overlay, emit).await?;
+    let client = http_client()?;
+    let progress = |done: u64, total: u64| emit(Progress { phase: "python".into(), done, total, message: None });
+    if crate::python_runtime::ensure(app_data, &client, &progress).await?.is_none() {
+        return Err(format!("The Colibri engine needs Python 3.10 or newer. {}", python_hint()));
+    }
+    emit(Progress::phase("done"));
+    let (a, o) = (app_data.to_path_buf(), overlay.map(Path::to_path_buf));
+    tokio::task::spawn_blocking(move || info(&a, o.as_deref())).await.map_err(|e| e.to_string())
+}
+
+/// Downloads and unpacks the pinned Colibri release. Reports progress through `emit`.
+async fn install_engine(
+    app_data: &Path,
+    overlay: Option<&Path>,
+    emit: &(dyn Fn(Progress) + Send + Sync),
+) -> Result<(), String> {
     let suffix = asset_suffix().ok_or("Colibri has no ready-made engine for this computer yet.")?;
     emit(Progress::phase("checking"));
+    if installed_dir(app_data, overlay).is_some() {
+        return Ok(());
+    }
     // The right version is unpacked already, only our engines are missing or older.
     if let (Some((dir, tag)), Some(o)) = (unpacked_dir(app_data), overlay) {
         if tag == pinned_tag() {
             emit(Progress::phase("extracting"));
             let (d, o) = (dir.clone(), o.to_path_buf());
             tokio::task::spawn_blocking(move || apply_overlay(&d, &o)).await.map_err(|e| e.to_string())??;
-            emit(Progress::phase("done"));
-            return Ok(info(app_data, overlay));
+            return Ok(());
         }
     }
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("CredenceAI/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = http_client()?;
     let api = std::env::var("CREDENCE_COLIBRI_API").unwrap_or_else(|_| format!("{RELEASES_API}{}", pinned_tag()));
     let json: serde_json::Value = client
         .get(&api)
@@ -276,8 +281,7 @@ pub async fn install(
     let dest = root.join(&release.tag);
     if let Some((_, tag)) = installed_dir(app_data, overlay) {
         if tag == release.tag {
-            emit(Progress::phase("done"));
-            return Ok(info(app_data, overlay));
+            return Ok(());
         }
     }
 
@@ -360,8 +364,7 @@ pub async fn install(
             }
         }
     }
-    emit(Progress::phase("done"));
-    Ok(info(app_data, overlay))
+    Ok(())
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@
 //! `coli.cmd` on Windows or `coli` elsewhere). GGUF models are imported once with
 //! `coli import`, which writes `<name>.colibri` next to the file.
 
+use crate::python_runtime::Python;
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
@@ -87,11 +88,25 @@ fn is_executable(p: &Path) -> bool {
     std::fs::metadata(p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
 }
 
-fn command(launcher: &Path) -> Command {
+/// The command that runs `coli`. With Credence's own (embeddable) Python, `coli` is run
+/// by it directly, since `coli.cmd` only looks for a Python on PATH.
+fn command(launcher: &Path, python: Option<&Python>) -> Command {
+    if let Some(Python::Bundled { exe, .. }) = python {
+        let script = if launcher.extension().is_some() { launcher.with_file_name("coli") } else { launcher.to_path_buf() };
+        if script.is_file() {
+            let dir = script.parent().unwrap_or(Path::new("."));
+            if let Err(e) = crate::python_runtime::prepare_bundled(exe, dir) {
+                eprintln!("{e}");
+            }
+            let mut c = Command::new(exe);
+            c.arg(&script);
+            return finish(c, &script);
+        }
+    }
     let ext = launcher.extension().map(|e| e.to_ascii_lowercase());
     let is_batch = ext.as_deref().is_some_and(|e| e == "cmd" || e == "bat");
     let is_exe = ext.as_deref().is_some_and(|e| e == "exe");
-    let mut c = if is_batch {
+    let c = if is_batch {
         let mut c = Command::new("cmd");
         c.arg("/C").arg(launcher);
         c
@@ -117,6 +132,10 @@ fn command(launcher: &Path) -> Command {
             c
         }
     };
+    finish(c, launcher)
+}
+
+fn finish(mut c: Command, launcher: &Path) -> Command {
     // Own process group, so stopping also ends the engine the launcher starts.
     #[cfg(unix)]
     {
@@ -137,7 +156,7 @@ fn command(launcher: &Path) -> Command {
 
 /// A folder from the download manager: use an existing `.colibri` folder, a Colibri
 /// container (has config.json), or import the first GGUF file.
-fn resolve_model(launcher: &Path, model_dir: &Path, log: &dyn Fn(String)) -> Result<PathBuf, String> {
+fn resolve_model(launcher: &Path, python: Option<&Python>, model_dir: &Path, log: &dyn Fn(String)) -> Result<PathBuf, String> {
     let entries: Vec<PathBuf> = walk(model_dir);
     if let Some(p) = entries.iter().find(|p| p.is_dir() && p.extension().is_some_and(|e| e == "colibri")) {
         return Ok(p.clone());
@@ -152,7 +171,7 @@ fn resolve_model(launcher: &Path, model_dir: &Path, log: &dyn Fn(String)) -> Res
         return Ok(model_dir.to_path_buf());
     };
     log(format!("Preparing model (one time): coli import {}", first.display()));
-    let out = command(launcher)
+    let out = command(launcher, python)
         .arg("import")
         .arg(first)
         .output()
@@ -232,6 +251,7 @@ impl Engine {
         extra_args: &[String],
         env: &[(String, String)],
         note: Option<&str>,
+        python: Option<&Python>,
     ) -> Result<EngineStatus, String> {
         self.stop();
         self.logs.lock().unwrap().clear();
@@ -240,7 +260,7 @@ impl Engine {
         }
         let launcher = launcher(colibri_dir)?;
         let me = self.clone();
-        let model = resolve_model(&launcher, model_dir, &move |l| me.log(l))?;
+        let model = resolve_model(&launcher, python, model_dir, &move |l| me.log(l))?;
 
         let shown_env: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v} ")).collect();
         self.log(format!(
@@ -249,7 +269,7 @@ impl Engine {
             model.display(),
             extra_args.join(" ")
         ));
-        let mut child = command(&launcher)
+        let mut child = command(&launcher, python)
             .arg("serve")
             .arg("--model")
             .arg(&model)
